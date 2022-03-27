@@ -5,6 +5,7 @@
 #include <iostream>
 #include <map>
 #include <random>
+#include <string>
 #include <vector>
 
 using Key = unsigned;
@@ -12,34 +13,75 @@ using Val = uintptr_t;
 using Keys = std::vector<Key>;
 using SysTimePt = std::chrono::time_point<std::chrono::high_resolution_clock>;
 
+// A place to write scratch data to hopefully avoid a compiler eliminating
+// desired functionality.
+uintptr_t dummy;
+
 struct TimeSpan {
   SysTimePt startTime, endTime;
-  std::string title;
-  TimeSpan(SysTimePt a, SysTimePt b, std::string title)
-      : startTime(a), endTime(b), title(title) {}
+  std::string prefix, title;
+  TimeSpan(SysTimePt a, SysTimePt b, std::string prefix, std::string title)
+      : startTime(a), endTime(b), prefix(prefix), title(title) {}
 };
 
 static SysTimePt getSysClockStamp() {
   return std::chrono::high_resolution_clock::now();
 }
 
+template <typename MapTypeA, typename MapTypeB>
 struct Owner {
-  std::map<Key, Val> stdMap;
-  llvm::DenseMap<Key, Val> llvmMap;
+  MapTypeA mapA;
+  MapTypeB mapB;
+  size_t nKeys;
   std::vector<TimeSpan> times;
 
-  Owner(const Keys &keys) {
-    // Populate the stdc++ map.
-    auto a = getSysClockStamp();
-    for (const auto &k : keys) stdMap[k] = -k;
-    auto b = getSysClockStamp();
-    times.push_back({a, b, "Populate std::map"});
+  void populate(const Keys &keys) {
+    nKeys = keys.size();
 
-    // Populate the llvm map.
+    // Populate the mapA.
+    auto a = getSysClockStamp();
+    for (const auto &k : keys) mapA[k] = -k;
+    auto b = getSysClockStamp();
+    times.push_back({a, b, typeid(MapTypeA).name(), "Populate"});
+
+    // Populate the mapB.
     a = getSysClockStamp();
-    for (const auto &k : keys) llvmMap[k] = -k;
+    for (const auto &k : keys) mapB[k] = -k;
     b = getSysClockStamp();
-    times.push_back({a, b, "Populate llvm::DenseMap"});
+    times.push_back({a, b, typeid(MapTypeB).name(), "Populate"});
+  }
+
+  void randomAccess(const Keys &keys) {
+    assert(nKeys && !keys.empty() && !mapA.empty() && !mapB.empty());
+
+    // Scan mapA looking/adding keys via operator[].
+    auto a = getSysClockStamp();
+    for (const auto &k : keys) dummy |= mapA[k];
+    auto b = getSysClockStamp();
+    times.push_back(
+        {a, b, typeid(MapTypeA).name(), "Random access via operator[]"});
+
+    // Scan mapA looking/adding keys via operator[].
+    a = getSysClockStamp();
+    for (const auto &k : keys) dummy |= mapA[k];
+    b = getSysClockStamp();
+    times.push_back(
+        {a, b, typeid(MapTypeB).name(), "Random access via operator[]"});
+
+    // Scan mapA looking/adding keys via find().
+    a = getSysClockStamp();
+    for (const auto &k : keys)
+      if (auto v = mapA.find(k); v != mapA.end()) dummy |= v->second;
+    b = getSysClockStamp();
+    times.push_back(
+        {a, b, typeid(MapTypeA).name(), "Random access via find()"});
+
+    // Scan mapB looking/adding keys via find().
+    for (const auto &k : keys)
+      if (auto v = mapB.find(k); v != mapB.end()) dummy |= v->second;
+    b = getSysClockStamp();
+    times.push_back(
+        {a, b, typeid(MapTypeB).name(), "Random access via find()"});
   }
 };
 
@@ -47,13 +89,16 @@ std::ostream &operator<<(std::ostream &os, const TimeSpan &ts) {
   auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(ts.endTime -
                                                                  ts.startTime)
                 .count();
-  return os << ts.title << ": " << ns;
+  return os << ts.prefix << ", " << ts.title << ", " << ns << ", nanoseconds";
 }
 
-std::ostream &operator<<(std::ostream &os, const Owner &o) {
-  os << "----- Results -----" << std::endl;
+template <typename MapTypeA, typename MapTypeB>
+std::ostream &operator<<(std::ostream &os, const Owner<MapTypeA, MapTypeB> &o) {
+  os << "--> Input keys:  " << o.nKeys << " keys" << std::endl
+     << "--> MapA:        " << o.mapA.size() << " keys" << std::endl
+     << "--> MapB:        " << o.mapB.size() << " keys" << std::endl;
   for (const auto &ts : o.times) os << ts << std::endl;
-  return os << "----- End -----";
+  return os;
 }
 
 static Keys initKeys(size_t nKeys) {
@@ -64,20 +109,29 @@ static Keys initKeys(size_t nKeys) {
   return vals;
 }
 
-int main(int argc, char **argv) {
-  if (argc != 2) {
-    std::cerr << "Usage: " << argv[0] << " <# of keys to measure>" << std::endl;
-    return 0;
-  }
-
+static void runTest(unsigned nKeys, unsigned id) {
   // Initialize the seed map.  This provides the random keys for the maps, and
   // later on is used to visit each key.
-  const unsigned nKeys = std::atoi(argv[1]);
   Keys keys = initKeys(nKeys);
-  Owner foo(keys);
+  Owner<std::map<Key, Val>, llvm::DenseMap<Key, Val>> foo;
 
-  std::cout << foo << std::endl;
+  // Conduct the measurements.
+  foo.populate(keys);
+  foo.randomAccess(keys);
+  std::cout << "----------{ Trial " + std::to_string(id) << " }----------"
+            << std::endl
+            << foo << std::endl;
+}
 
+int main(int argc, char **argv) {
+  if (argc != 3) {
+    std::cerr << "Usage: " << argv[0] << " <# of trials> <# of keys to measure>"
+              << std::endl;
+    return 0;
+  }
+  const unsigned nTrials = std::atoi(argv[1]);
+  const unsigned nKeys = std::atoi(argv[2]);
+  for (unsigned i = 0; i < nTrials; ++i) runTest(nKeys, i + 1);
   return 0;
 }
 
