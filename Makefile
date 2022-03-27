@@ -1,4 +1,4 @@
-CXXFLAGS = -O3 -pedantic --std=c++20 -Wall
+CXXFLAGS = -O0 -pedantic --std=c++20 -Wall
 SRCS = main.cc
 OBJS = $(SRCS:.cc=.o)
 
