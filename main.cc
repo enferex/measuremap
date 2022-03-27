@@ -35,6 +35,8 @@ template <typename MapTypeA, typename MapTypeB>
 struct Owner final {
   MapTypeA mapA;
   MapTypeB mapB;
+  std::string mapAName = typeid(MapTypeA).name();
+  std::string mapBName = typeid(MapTypeB).name();
   size_t nKeys;
   std::vector<TimeSpan> times;
 
@@ -45,13 +47,13 @@ struct Owner final {
     auto a = getSysClockStamp();
     for (const auto &k : keys) mapA[k] = -k;
     auto b = getSysClockStamp();
-    times.push_back({a, b, typeid(MapTypeA).name(), "Populate"});
+    times.push_back({a, b, "MapA", "Populate"});
 
     // Populate the mapB.
     a = getSysClockStamp();
     for (const auto &k : keys) mapB[k] = -k;
     b = getSysClockStamp();
-    times.push_back({a, b, typeid(MapTypeB).name(), "Populate"});
+    times.push_back({a, b, "MapB", "Populate"});
   }
 
   void randomAccess(const Keys &keys) {
@@ -61,30 +63,26 @@ struct Owner final {
     auto a = getSysClockStamp();
     for (const auto &k : keys) dummy |= mapA[k];
     auto b = getSysClockStamp();
-    times.push_back(
-        {a, b, typeid(MapTypeA).name(), "Random access via operator[]"});
+    times.push_back({a, b, "MapA", "Random access via operator[]"});
 
     // Scan mapA looking/adding keys via operator[].
     a = getSysClockStamp();
     for (const auto &k : keys) dummy |= mapA[k];
     b = getSysClockStamp();
-    times.push_back(
-        {a, b, typeid(MapTypeB).name(), "Random access via operator[]"});
+    times.push_back({a, b, "MapB", "Random access via operator[]"});
 
     // Scan mapA looking/adding keys via find().
     a = getSysClockStamp();
     for (const auto &k : keys)
       if (auto v = mapA.find(k); v != mapA.end()) dummy |= v->second;
     b = getSysClockStamp();
-    times.push_back(
-        {a, b, typeid(MapTypeA).name(), "Random access via find()"});
+    times.push_back({a, b, "MapA", "Random access via find()"});
 
     // Scan mapB looking/adding keys via find().
     for (const auto &k : keys)
       if (auto v = mapB.find(k); v != mapB.end()) dummy |= v->second;
     b = getSysClockStamp();
-    times.push_back(
-        {a, b, typeid(MapTypeB).name(), "Random access via find()"});
+    times.push_back({a, b, "MapB", "Random access via find()"});
   }
 
   // Count the number of unique pages for the keys and val in each map.
@@ -119,6 +117,8 @@ template <typename MapTypeA, typename MapTypeB>
 std::ostream &operator<<(std::ostream &os, const Owner<MapTypeA, MapTypeB> &o) {
   auto [nMapAPages, nMapBPages] = o.measureFrag();
   os << "--> Input keys:  " << o.nKeys << " keys" << std::endl
+     << "--> MapA type:   " << o.mapAName << std::endl
+     << "--> MapB type:   " << o.mapBName << std::endl
      << "--> MapA:        " << o.mapA.size() << " keys across " << nMapAPages
      << " pages" << std::endl
      << "--> MapB:        " << o.mapB.size() << " keys across " << nMapBPages
