@@ -1,11 +1,14 @@
 #include <llvm/ADT/DenseMap.h>
+#include <sys/user.h>
 
 #include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <map>
 #include <random>
+#include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 
 using Key = unsigned;
@@ -17,7 +20,7 @@ using SysTimePt = std::chrono::time_point<std::chrono::high_resolution_clock>;
 // desired functionality.
 uintptr_t dummy;
 
-struct TimeSpan {
+struct TimeSpan final {
   SysTimePt startTime, endTime;
   std::string prefix, title;
   TimeSpan(SysTimePt a, SysTimePt b, std::string prefix, std::string title)
@@ -29,7 +32,7 @@ static SysTimePt getSysClockStamp() {
 }
 
 template <typename MapTypeA, typename MapTypeB>
-struct Owner {
+struct Owner final {
   MapTypeA mapA;
   MapTypeB mapB;
   size_t nKeys;
@@ -83,6 +86,26 @@ struct Owner {
     times.push_back(
         {a, b, typeid(MapTypeB).name(), "Random access via find()"});
   }
+
+  // Count the number of unique pages for the keys and val in each map.
+  std::tuple<size_t, size_t> measureFrag() const {
+    std::set<uintptr_t> mapAPages;
+    for (const auto &k : mapA) {
+      uintptr_t keyPageAddr = (uintptr_t)&k.first & PAGE_MASK;
+      uintptr_t valPageAddr = (uintptr_t)&k.second & PAGE_MASK;
+      mapAPages.insert(keyPageAddr);
+      mapAPages.insert(valPageAddr);
+    }
+
+    std::set<uintptr_t> mapBPages;
+    for (const auto &k : mapB) {
+      uintptr_t keyPageAddr = (uintptr_t)&k.first & PAGE_MASK;
+      uintptr_t valPageAddr = (uintptr_t)&k.second & PAGE_MASK;
+      mapBPages.insert(keyPageAddr);
+      mapBPages.insert(valPageAddr);
+    }
+    return {mapAPages.size(), mapBPages.size()};
+  }
 };
 
 std::ostream &operator<<(std::ostream &os, const TimeSpan &ts) {
@@ -94,9 +117,12 @@ std::ostream &operator<<(std::ostream &os, const TimeSpan &ts) {
 
 template <typename MapTypeA, typename MapTypeB>
 std::ostream &operator<<(std::ostream &os, const Owner<MapTypeA, MapTypeB> &o) {
+  auto [nMapAPages, nMapBPages] = o.measureFrag();
   os << "--> Input keys:  " << o.nKeys << " keys" << std::endl
-     << "--> MapA:        " << o.mapA.size() << " keys" << std::endl
-     << "--> MapB:        " << o.mapB.size() << " keys" << std::endl;
+     << "--> MapA:        " << o.mapA.size() << " keys across " << nMapAPages
+     << " pages" << std::endl
+     << "--> MapB:        " << o.mapB.size() << " keys across " << nMapBPages
+     << " pages" << std::endl;
   for (const auto &ts : o.times) os << ts << std::endl;
   return os;
 }
