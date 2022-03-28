@@ -12,14 +12,15 @@
 #include <vector>
 
 using Key = unsigned;
-using Val = uintptr_t;
+using Val = unsigned;
 using Keys = std::vector<Key>;
 using SysTimePt = std::chrono::time_point<std::chrono::high_resolution_clock>;
 
-// A place to write scratch data to hopefully avoid a compiler eliminating
+// A place to write scratch data, to hopefully avoid the compiler eliminating
 // desired functionality.
-uintptr_t dummy;
+Val dummy;
 
+// Each test we collect a start and end time.  That pair make up a TimeSpan.
 struct TimeSpan final {
   SysTimePt startTime, endTime;
   std::string prefix, title;
@@ -31,6 +32,8 @@ static SysTimePt getSysClockStamp() {
   return std::chrono::high_resolution_clock::now();
 }
 
+// This class holds the two map structures being compared, and also perfoms
+// the test/measurements.
 template <typename MapTypeA, typename MapTypeB>
 struct Owner final {
   MapTypeA mapA;
@@ -40,6 +43,7 @@ struct Owner final {
   size_t nKeys;
   std::vector<TimeSpan> times;
 
+  // Measure the time performance of filling up the maps.
   void populate(const Keys &keys) {
     nKeys = keys.size();
 
@@ -56,6 +60,7 @@ struct Owner final {
     times.push_back({a, b, "MapB", "Populate"});
   }
 
+  // Measure the time performance of accessing items from the maps.
   void randomAccess(const Keys &keys) {
     assert(nKeys && !keys.empty() && !mapA.empty() && !mapB.empty());
 
@@ -127,6 +132,7 @@ std::ostream &operator<<(std::ostream &os, const Owner<MapTypeA, MapTypeB> &o) {
   return os;
 }
 
+// Generate 'nKeys' random values to use as keys into the maps.
 static Keys initKeys(size_t nKeys) {
   auto vals = Keys(nKeys);
   auto seed = std::chrono::system_clock::now().time_since_epoch().count();
@@ -135,6 +141,7 @@ static Keys initKeys(size_t nKeys) {
   return vals;
 }
 
+// Initialize the maps and perform the test measurements.
 static void runTest(unsigned nKeys, unsigned id) {
   // Initialize the seed map.  This provides the random keys for the maps, and
   // later on is used to visit each key.
@@ -160,4 +167,3 @@ int main(int argc, char **argv) {
   for (unsigned i = 0; i < nTrials; ++i) runTest(nKeys, i + 1);
   return 0;
 }
-

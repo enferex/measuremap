@@ -1,11 +1,12 @@
 CXXFLAGS = -O0 -pedantic --std=c++20 -Wall
 SRCS = main.cc
 OBJS = $(SRCS:.cc=.o)
+APP = measuremap
 
-all: timer
+all: $(APP)
 
-timer: $(OBJS)
+$(APP): $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -lLLVM -o $@
 
 clean:
-	$(RM) -v $(OBJS) timer
+	$(RM) -v $(OBJS) $(APP)
