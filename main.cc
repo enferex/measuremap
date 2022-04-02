@@ -11,14 +11,18 @@
 #include <tuple>
 #include <vector>
 
-using Key = unsigned;
-using Val = unsigned;
+// Modify these to test other sizes and map containers.
+using Key = uint64_t;
+using Val = uint64_t;
+using MapA = std::map<Key, Val>;
+using MapB = llvm::DenseMap<Key, Val>;
+
 using Keys = std::vector<Key>;
 using SysTimePt = std::chrono::time_point<std::chrono::high_resolution_clock>;
 
 // A place to write scratch data, to hopefully avoid the compiler eliminating
 // desired functionality.
-Val dummy;
+uintptr_t dummy;
 
 // Each test we collect a start and end time.  That pair make up a TimeSpan.
 struct TimeSpan final {
@@ -49,13 +53,13 @@ struct Owner final {
 
     // Populate the mapA.
     auto a = getSysClockStamp();
-    for (const auto &k : keys) mapA[k] = -k;
+    for (const auto &k : keys) mapA[k] = (Val)&k;
     auto b = getSysClockStamp();
     times.push_back({a, b, "MapA", "Populate"});
 
     // Populate the mapB.
     a = getSysClockStamp();
-    for (const auto &k : keys) mapB[k] = -k;
+    for (const auto &k : keys) mapB[k] = (Val)&k;
     b = getSysClockStamp();
     times.push_back({a, b, "MapB", "Populate"});
   }
@@ -66,26 +70,26 @@ struct Owner final {
 
     // Scan mapA looking/adding keys via operator[].
     auto a = getSysClockStamp();
-    for (const auto &k : keys) dummy |= mapA[k];
+    for (const auto &k : keys) dummy |= (uintptr_t)mapA[k];
     auto b = getSysClockStamp();
     times.push_back({a, b, "MapA", "Random access via operator[]"});
 
     // Scan mapA looking/adding keys via operator[].
     a = getSysClockStamp();
-    for (const auto &k : keys) dummy |= mapA[k];
+    for (const auto &k : keys) dummy |= (uintptr_t)mapA[k];
     b = getSysClockStamp();
     times.push_back({a, b, "MapB", "Random access via operator[]"});
 
     // Scan mapA looking/adding keys via find().
     a = getSysClockStamp();
     for (const auto &k : keys)
-      if (auto v = mapA.find(k); v != mapA.end()) dummy |= v->second;
+      if (auto v = mapA.find(k); v != mapA.end()) dummy |= (uintptr_t)v->second;
     b = getSysClockStamp();
     times.push_back({a, b, "MapA", "Random access via find()"});
 
     // Scan mapB looking/adding keys via find().
     for (const auto &k : keys)
-      if (auto v = mapB.find(k); v != mapB.end()) dummy |= v->second;
+      if (auto v = mapB.find(k); v != mapB.end()) dummy |= (uintptr_t)v->second;
     b = getSysClockStamp();
     times.push_back({a, b, "MapB", "Random access via find()"});
   }
@@ -146,7 +150,7 @@ static void runTest(unsigned nKeys, unsigned id) {
   // Initialize the seed map.  This provides the random keys for the maps, and
   // later on is used to visit each key.
   Keys keys = initKeys(nKeys);
-  Owner<std::map<Key, Val>, llvm::DenseMap<Key, Val>> foo;
+  Owner<MapA, MapB> foo;
 
   // Conduct the measurements.
   foo.populate(keys);
