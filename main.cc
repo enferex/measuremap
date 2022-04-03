@@ -76,7 +76,7 @@ struct Owner final {
 
     // Scan mapA looking/adding keys via operator[].
     a = getSysClockStamp();
-    for (const auto &k : keys) dummy |= (uintptr_t)mapA[k];
+    for (const auto &k : keys) dummy |= (uintptr_t)mapB[k];
     b = getSysClockStamp();
     times.push_back({a, b, "MapB", "Random access via operator[]"});
 
